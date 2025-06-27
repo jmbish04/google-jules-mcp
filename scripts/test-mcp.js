@@ -53,6 +53,18 @@ async function testJulesMCP() {
           }
         }
       }
+    },
+    {
+      name: 'Session Info (Test)',
+      request: {
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: {
+          name: 'jules_session_info',
+          arguments: {}
+        }
+      }
     }
   ];
 

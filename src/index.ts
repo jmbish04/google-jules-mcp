@@ -14,6 +14,7 @@ import { chromium, Browser, Page } from 'playwright';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import axios from 'axios';
 
 // Configuration interface
 interface JulesConfig {
@@ -22,6 +23,23 @@ interface JulesConfig {
   debug: boolean;
   dataPath: string;
   baseUrl: string;
+  userDataDir?: string;
+  useExistingSession: boolean;
+  cookiePath?: string;
+  sessionMode: 'fresh' | 'chrome-profile' | 'cookies' | 'persistent' | 'browserbase';
+  // Browserbase configuration
+  browserbaseApiKey?: string;
+  browserbaseProjectId?: string;
+  browserbaseSessionId?: string;
+  // Cookie strings for manual configuration
+  googleAuthCookies?: string;
+}
+
+// Browserbase session interface
+interface BrowserbaseSession {
+  id: string;
+  status: string;
+  connectUrl: string;
 }
 
 // Task data interfaces
@@ -64,7 +82,17 @@ class GoogleJulesMCP {
       timeout: parseInt(process.env.TIMEOUT || '30000'),
       debug: process.env.DEBUG === 'true',
       dataPath: process.env.JULES_DATA_PATH || path.join(os.homedir(), '.jules-mcp', 'data.json'),
-      baseUrl: 'https://jules.google.com'
+      baseUrl: 'https://jules.google.com',
+      userDataDir: process.env.CHROME_USER_DATA_DIR,
+      useExistingSession: process.env.USE_EXISTING_SESSION === 'true',
+      cookiePath: process.env.COOKIES_PATH,
+      sessionMode: (process.env.SESSION_MODE as any) || 'fresh',
+      // Browserbase configuration
+      browserbaseApiKey: process.env.BROWSERBASE_API_KEY,
+      browserbaseProjectId: process.env.BROWSERBASE_PROJECT_ID,
+      browserbaseSessionId: process.env.BROWSERBASE_SESSION_ID,
+      // Google Auth Cookies as string
+      googleAuthCookies: process.env.GOOGLE_AUTH_COOKIES
     };
 
     this.dataPath = this.config.dataPath;
@@ -248,6 +276,47 @@ class GoogleJulesMCP {
               },
             },
           },
+          {
+            name: 'jules_get_cookies',
+            description: 'Get current browser cookies for session persistence',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                format: {
+                  type: 'string',
+                  enum: ['json', 'string'],
+                  description: 'Output format for cookies (default: json)',
+                },
+              },
+            },
+          },
+          {
+            name: 'jules_set_cookies',
+            description: 'Set browser cookies from string or JSON for authentication',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                cookies: {
+                  type: 'string',
+                  description: 'Cookies as JSON string or cookie string format',
+                },
+                format: {
+                  type: 'string',
+                  enum: ['json', 'string'],
+                  description: 'Format of input cookies (default: json)',
+                },
+              },
+              required: ['cookies'],
+            },
+          },
+          {
+            name: 'jules_session_info',
+            description: 'Get current session configuration and status',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+            },
+          },
         ],
       };
     });
@@ -275,6 +344,12 @@ class GoogleJulesMCP {
             return await this.bulkCreateTasks(args);
           case 'jules_screenshot':
             return await this.takeScreenshot(args);
+          case 'jules_get_cookies':
+            return await this.getCookies(args);
+          case 'jules_set_cookies':
+            return await this.setCookies(args);
+          case 'jules_session_info':
+            return await this.getSessionInfo(args);
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
@@ -367,24 +442,197 @@ class GoogleJulesMCP {
     });
   }
 
-  // Browser management
+  // Browserbase session management
+  private async createBrowserbaseSession(): Promise<BrowserbaseSession> {
+    if (!this.config.browserbaseApiKey || !this.config.browserbaseProjectId) {
+      throw new Error('Browserbase API key and project ID are required for browserbase mode');
+    }
+
+    const response = await axios.post(
+      `https://www.browserbase.com/v1/projects/${this.config.browserbaseProjectId}/sessions`,
+      {
+        keepAlive: true,
+        timeout: this.config.timeout,
+      },
+      {
+        headers: {
+          'x-bb-api-key': this.config.browserbaseApiKey,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    return response.data;
+  }
+
+  private async getBrowserbaseConnectUrl(): Promise<string> {
+    if (this.config.browserbaseSessionId) {
+      // Use existing session
+      return `wss://connect.browserbase.com?apiKey=${this.config.browserbaseApiKey}&sessionId=${this.config.browserbaseSessionId}`;
+    } else {
+      // Create new session
+      const session = await this.createBrowserbaseSession();
+      console.error(`Created Browserbase session: ${session.id}`);
+      return session.connectUrl;
+    }
+  }
+
+  // Cookie management
+  private parseCookiesFromString(cookieString: string): Array<{name: string, value: string, domain: string}> {
+    return cookieString.split(';').map(cookie => {
+      const [nameValue, ...rest] = cookie.trim().split('=');
+      const [name, value] = nameValue.split('=');
+      const domain = rest.find(part => part.trim().startsWith('domain='))?.split('=')[1] || '.google.com';
+      return { name: name.trim(), value: value?.trim() || '', domain };
+    }).filter(cookie => cookie.name && cookie.value);
+  }
+
+  private async loadCookiesFromFile(cookiePath: string): Promise<Array<{name: string, value: string, domain: string}>> {
+    try {
+      const cookieData = await fs.readFile(cookiePath, 'utf-8');
+      return JSON.parse(cookieData);
+    } catch (error) {
+      console.error(`Failed to load cookies from ${cookiePath}:`, error);
+      return [];
+    }
+  }
+
+  private async saveCookiesToFile(cookies: Array<{name: string, value: string, domain: string}>, cookiePath: string): Promise<void> {
+    try {
+      await fs.mkdir(path.dirname(cookiePath), { recursive: true });
+      await fs.writeFile(cookiePath, JSON.stringify(cookies, null, 2));
+    } catch (error) {
+      console.error(`Failed to save cookies to ${cookiePath}:`, error);
+    }
+  }
+
+  // Browser management with comprehensive session support
   private async getBrowser(): Promise<Browser> {
     if (!this.browser) {
-      this.browser = await chromium.launch({
-        headless: this.config.headless,
-        timeout: this.config.timeout
-      });
+      switch (this.config.sessionMode) {
+        case 'browserbase':
+          const connectUrl = await this.getBrowserbaseConnectUrl();
+          this.browser = await chromium.connectOverCDP(connectUrl);
+          break;
+
+        case 'chrome-profile':
+          if (!this.config.userDataDir) {
+            throw new Error('CHROME_USER_DATA_DIR must be set for chrome-profile mode');
+          }
+          // For persistent contexts, we'll handle this differently in getPage
+          this.browser = await chromium.launch({
+            headless: this.config.headless,
+            timeout: this.config.timeout
+          });
+          break;
+
+        case 'persistent':
+          // For persistent contexts, we'll handle this differently in getPage
+          this.browser = await chromium.launch({
+            headless: this.config.headless,
+            timeout: this.config.timeout
+          });
+          break;
+
+        case 'cookies':
+        case 'fresh':
+        default:
+          this.browser = await chromium.launch({
+            headless: this.config.headless,
+            timeout: this.config.timeout
+          });
+          break;
+      }
     }
     return this.browser;
   }
 
   private async getPage(): Promise<Page> {
     if (!this.page) {
-      const browser = await this.getBrowser();
-      this.page = await browser.newPage();
+      // Handle persistent contexts separately
+      if (this.config.sessionMode === 'chrome-profile' && this.config.userDataDir) {
+        const context = await chromium.launchPersistentContext(this.config.userDataDir, {
+          headless: this.config.headless,
+          timeout: this.config.timeout,
+        });
+        const pages = context.pages();
+        this.page = pages.length > 0 ? pages[0] : await context.newPage();
+      } else if (this.config.sessionMode === 'persistent') {
+        const persistentDir = this.config.userDataDir || path.join(os.homedir(), '.jules-mcp', 'browser-data');
+        const context = await chromium.launchPersistentContext(persistentDir, {
+          headless: this.config.headless,
+          timeout: this.config.timeout,
+        });
+        const pages = context.pages();
+        this.page = pages.length > 0 ? pages[0] : await context.newPage();
+      } else {
+        const browser = await this.getBrowser();
+        
+        if (this.config.sessionMode === 'browserbase') {
+          // For Browserbase, get existing pages or create new one
+          const contexts = browser.contexts();
+          if (contexts.length > 0) {
+            const pages = contexts[0].pages();
+            this.page = pages.length > 0 ? pages[0] : await contexts[0].newPage();
+          } else {
+            this.page = await browser.newPage();
+          }
+        } else {
+          this.page = await browser.newPage();
+        }
+      }
+
       await this.page.setViewportSize({ width: 1200, height: 800 });
+
+      // Load cookies if specified
+      await this.loadSessionCookies();
     }
     return this.page;
+  }
+
+  private async loadSessionCookies(): Promise<void> {
+    if (!this.page) return;
+
+    let cookies: Array<{name: string, value: string, domain: string}> = [];
+
+    // Load cookies from string
+    if (this.config.googleAuthCookies) {
+      cookies = this.parseCookiesFromString(this.config.googleAuthCookies);
+      console.error(`Loaded ${cookies.length} cookies from environment variable`);
+    }
+    // Load cookies from file
+    else if (this.config.cookiePath && this.config.sessionMode === 'cookies') {
+      cookies = await this.loadCookiesFromFile(this.config.cookiePath);
+      console.error(`Loaded ${cookies.length} cookies from file`);
+    }
+
+    // Set cookies if any were loaded
+    if (cookies.length > 0) {
+      await this.page.context().addCookies(cookies.map(cookie => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: '/',
+      })));
+      console.error(`Set ${cookies.length} cookies in browser context`);
+    }
+  }
+
+  private async saveSessionCookies(): Promise<void> {
+    if (!this.page || !this.config.cookiePath || this.config.sessionMode !== 'cookies') return;
+
+    try {
+      const cookies = await this.page.context().cookies();
+      const simplifiedCookies = cookies.map(cookie => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain
+      }));
+      await this.saveCookiesToFile(simplifiedCookies, this.config.cookiePath);
+      console.error(`Saved ${cookies.length} cookies to file`);
+    } catch (error) {
+      console.error('Failed to save cookies:', error);
+    }
   }
 
   // Data persistence
@@ -793,6 +1041,106 @@ class GoogleJulesMCP {
     }
   }
 
+  private async getCookies(args: any) {
+    const { format = 'json' } = args;
+    const page = await this.getPage();
+
+    try {
+      const cookies = await page.context().cookies();
+      
+      if (format === 'string') {
+        const cookieString = cookies.map(cookie => 
+          `${cookie.name}=${cookie.value}; domain=${cookie.domain}; path=${cookie.path}`
+        ).join('; ');
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Cookie String:\\n${cookieString}`
+            }
+          ]
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Cookies (${cookies.length} total):\\n${JSON.stringify(cookies, null, 2)}`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to get cookies: ${error}`);
+    }
+  }
+
+  private async setCookies(args: any) {
+    const { cookies, format = 'json' } = args;
+    const page = await this.getPage();
+
+    try {
+      let cookiesToSet: Array<{name: string, value: string, domain: string}> = [];
+
+      if (format === 'string') {
+        cookiesToSet = this.parseCookiesFromString(cookies);
+      } else {
+        const parsed = JSON.parse(cookies);
+        cookiesToSet = Array.isArray(parsed) ? parsed : [parsed];
+      }
+
+      await page.context().addCookies(cookiesToSet.map(cookie => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: '/',
+      })));
+
+      // Save cookies if in cookies mode
+      if (this.config.sessionMode === 'cookies' && this.config.cookiePath) {
+        await this.saveCookiesToFile(cookiesToSet, this.config.cookiePath);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully set ${cookiesToSet.length} cookies. Session authentication should now work for Google Jules.`
+          }
+        ]
+      };
+    } catch (error) {
+      throw new Error(`Failed to set cookies: ${error}`);
+    }
+  }
+
+  private async getSessionInfo(args: any) {
+    const sessionInfo = {
+      sessionMode: this.config.sessionMode,
+      hasUserDataDir: !!this.config.userDataDir,
+      hasCookiePath: !!this.config.cookiePath,
+      hasGoogleAuthCookies: !!this.config.googleAuthCookies,
+      hasBrowserbaseConfig: !!(this.config.browserbaseApiKey && this.config.browserbaseProjectId),
+      browserbaseSessionId: this.config.browserbaseSessionId,
+      isHeadless: this.config.headless,
+      timeout: this.config.timeout,
+      baseUrl: this.config.baseUrl,
+      dataPath: this.config.dataPath,
+      browserConnected: !!this.browser,
+      pageReady: !!this.page
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Jules MCP Session Info:\\n${JSON.stringify(sessionInfo, null, 2)}`
+        }
+      ]
+    };
+  }
+
   private async getActiveTasks(): Promise<JulesTask[]> {
     const data = await this.loadTaskData();
     return data.tasks.filter(task => 
@@ -801,6 +1149,9 @@ class GoogleJulesMCP {
   }
 
   async cleanup() {
+    // Save cookies before cleanup if in cookies mode
+    await this.saveSessionCookies();
+    
     if (this.page) {
       await this.page.close();
     }

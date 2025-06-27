@@ -7,6 +7,7 @@ mcpServers:
       HEADLESS: "true"
       TIMEOUT: "30000"
       DEBUG: "false"
+      SESSION_MODE: "fresh"
     schema:
       type: object
       properties:
@@ -24,11 +25,39 @@ mcpServers:
           enum: ["true", "false"]
           default: "false"
           description: "Enable debug logging and screenshots"
+        SESSION_MODE:
+          type: string
+          enum: ["fresh", "chrome-profile", "cookies", "persistent", "browserbase"]
+          default: "fresh"
+          description: "Session management mode: fresh (no session), chrome-profile (use Chrome profile), cookies (save/load cookies), persistent (save browser data), browserbase (remote browser)"
         JULES_DATA_PATH:
           type: string
           description: "Custom path for Jules task data storage"
+        CHROME_USER_DATA_DIR:
+          type: string
+          description: "Path to Chrome user data directory (for chrome-profile mode)"
+        COOKIES_PATH:
+          type: string
+          description: "Path to save/load cookies file (for cookies mode)"
+        GOOGLE_AUTH_COOKIES:
+          type: string
+          description: "Google authentication cookies as string (name=value; domain=.google.com format)"
+        BROWSERBASE_API_KEY:
+          type: string
+          description: "Browserbase API key for remote browser sessions"
+        BROWSERBASE_PROJECT_ID:
+          type: string
+          description: "Browserbase project ID"
+        BROWSERBASE_SESSION_ID:
+          type: string
+          description: "Existing Browserbase session ID (optional - creates new if not provided)"
+        USE_EXISTING_SESSION:
+          type: string
+          enum: ["true", "false"]
+          default: "false"
+          description: "Whether to use existing session data"
       required: []
-    description: "MCP server for Google Jules automation - create tasks, manage code reviews, automate repository workflows"
+    description: "MCP server for Google Jules automation with comprehensive session management - supports local Chrome profiles, cookie persistence, and remote Browserbase sessions for seamless Google authentication"
     homepage: "https://github.com/samihalawa/google-jules-mcp"
     license: "MIT"
     keywords:
@@ -40,3 +69,5 @@ mcpServers:
       - ai-assistant
       - mcp
       - modelcontextprotocol
+      - browserbase
+      - session-management
