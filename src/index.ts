@@ -971,21 +971,52 @@ Remember: Always start with \`jules_session_info\` and \`jules_screenshot\` to u
       throw new Error('Browserbase API key and project ID are required for browserbase mode');
     }
 
-    const response = await axios.post(
-      `https://www.browserbase.com/v1/projects/${this.config.browserbaseProjectId}/sessions`,
-      {
-        keepAlive: true,
-        timeout: this.config.timeout,
-      },
-      {
-        headers: {
-          'x-bb-api-key': this.config.browserbaseApiKey,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const sessionData: any = {
+      projectId: this.config.browserbaseProjectId,
+      keepAlive: true,
+      timeout: this.config.timeout,
+    };
 
-    return response.data;
+    // Add context ID if available for persistent sessions with Chrome user data
+    const contextId = process.env.BROWSERBASE_CONTEXT_ID;
+    if (contextId) {
+      // Try different parameter names based on API documentation
+      sessionData.contextId = contextId;
+      console.error(`Using Browserbase context: ${contextId}`);
+    }
+
+    try {
+      const response = await axios.post(
+        `https://api.browserbase.com/v1/sessions`,
+        sessionData,
+        {
+          headers: {
+            'x-bb-api-key': this.config.browserbaseApiKey,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error: any) {
+      // If context fails, try without context as fallback
+      if (contextId && error.response?.status === 400) {
+        console.error('Context parameter failed, trying without context...');
+        delete sessionData.contextId;
+        const response = await axios.post(
+          `https://api.browserbase.com/v1/sessions`,
+          sessionData,
+          {
+            headers: {
+              'x-bb-api-key': this.config.browserbaseApiKey,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        return response.data;
+      }
+      throw error;
+    }
   }
 
   private async getBrowserbaseConnectUrl(): Promise<string> {

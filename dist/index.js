@@ -892,16 +892,42 @@ Remember: Always start with \`jules_session_info\` and \`jules_screenshot\` to u
         if (!this.config.browserbaseApiKey || !this.config.browserbaseProjectId) {
             throw new Error('Browserbase API key and project ID are required for browserbase mode');
         }
-        const response = await axios.post(`https://www.browserbase.com/v1/projects/${this.config.browserbaseProjectId}/sessions`, {
+        const sessionData = {
+            projectId: this.config.browserbaseProjectId,
             keepAlive: true,
             timeout: this.config.timeout,
-        }, {
-            headers: {
-                'x-bb-api-key': this.config.browserbaseApiKey,
-                'Content-Type': 'application/json',
-            },
-        });
-        return response.data;
+        };
+        // Add context ID if available for persistent sessions with Chrome user data
+        const contextId = process.env.BROWSERBASE_CONTEXT_ID;
+        if (contextId) {
+            // Try different parameter names based on API documentation
+            sessionData.contextId = contextId;
+            console.error(`Using Browserbase context: ${contextId}`);
+        }
+        try {
+            const response = await axios.post(`https://api.browserbase.com/v1/sessions`, sessionData, {
+                headers: {
+                    'x-bb-api-key': this.config.browserbaseApiKey,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data;
+        }
+        catch (error) {
+            // If context fails, try without context as fallback
+            if (contextId && error.response?.status === 400) {
+                console.error('Context parameter failed, trying without context...');
+                delete sessionData.contextId;
+                const response = await axios.post(`https://api.browserbase.com/v1/sessions`, sessionData, {
+                    headers: {
+                        'x-bb-api-key': this.config.browserbaseApiKey,
+                        'Content-Type': 'application/json',
+                    },
+                });
+                return response.data;
+            }
+            throw error;
+        }
     }
     async getBrowserbaseConnectUrl() {
         if (this.config.browserbaseSessionId) {
