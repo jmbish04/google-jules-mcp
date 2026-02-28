@@ -1,6 +1,7 @@
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import type { Env } from '../worker';
+
+// Env is a global type from worker-configuration.d.ts
 
 /**
  * Prompt Optimizer
@@ -12,9 +13,13 @@ export const promptOptimizer = {
    * Optimize a prompt for Cloudflare-specific implementation
    */
   async optimizeForCloudflare(prompt: string, env: Env): Promise<string> {
+    // Get secrets from secrets store
+    const openaiApiKey = await env.OPENAI_API_KEY.get();
+    const cloudflareAccountId = await env.CLOUDFLARE_ACCOUNT_ID.get();
+
     const openai = createOpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_NAME}/openai`,
+      apiKey: openaiApiKey,
+      baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
     });
 
     // TODO: Query cloudflare-docs MCP for relevant context
@@ -40,7 +45,6 @@ Respond with ONLY the optimized prompt, no explanations.
         model: openai('gpt-4o-mini'),
         prompt: optimizationPrompt,
         temperature: 0.5,
-        maxTokens: 1000,
       });
 
       return text.trim();
@@ -54,9 +58,13 @@ Respond with ONLY the optimized prompt, no explanations.
    * Optimize a UX prompt for Stitch with shadcn dark theme standards
    */
   async optimizeForStitch(uxDescription: string, env: Env): Promise<string> {
+    // Get secrets from secrets store
+    const openaiApiKey = await env.OPENAI_API_KEY.get();
+    const cloudflareAccountId = await env.CLOUDFLARE_ACCOUNT_ID.get();
+
     const openai = createOpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_NAME}/openai`,
+      apiKey: openaiApiKey,
+      baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
     });
 
     const optimizationPrompt = `
@@ -80,7 +88,6 @@ Respond with ONLY the optimized Stitch prompt, no explanations.
         model: openai('gpt-4o-mini'),
         prompt: optimizationPrompt,
         temperature: 0.5,
-        maxTokens: 800,
       });
 
       return text.trim();
@@ -119,5 +126,5 @@ ${rulesContext}`;
 };
 
 // Import schema for type checking
-import * as schema from '../db/schema';
+import * as schema from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
