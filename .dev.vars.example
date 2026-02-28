@@ -1,0 +1,15 @@
+# Local development environment variables
+# Copy this file to .dev.vars and fill in your values
+
+# Stitch API Key (for UX mockups)
+STITCH_API_KEY=your_stitch_api_key_here
+
+# OpenAI API Key (for AI agents)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Cloudflare AI Gateway Configuration
+AI_GATEWAY_ACCOUNT_ID=your_cloudflare_account_id
+AI_GATEWAY_NAME=your_gateway_name
+
+# Optional: For local testing
+# ENVIRONMENT=development

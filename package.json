@@ -9,21 +9,38 @@
   },
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
+    "build:worker": "tsc --project tsconfig.worker.json",
     "dev": "tsc --watch",
+    "dev:worker": "wrangler dev",
     "start": "node dist/index.js",
     "prepare": "npm run build",
-    "test": "echo \"Run: echo '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/list\", \"params\": {}}' | node dist/index.js\""
+    "test": "echo \"Run: echo '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/list\", \"params\": {}}' | node dist/index.js\"",
+    "db:generate": "drizzle-kit generate",
+    "migrate:remote": "pnpm run db:generate && wrangler d1 migrations apply jules_sessions --remote",
+    "migrate:local": "pnpm run db:generate && wrangler d1 migrations apply jules_sessions --local",
+    "db:studio": "drizzle-kit studio",
+    "deploy": "pnpm run build:worker && pnpm run migrate:remote && wrangler deploy",
+    "deploy:tail": "rm -f wrangler.txt && pnpm run deploy && wrangler tail --format pretty | tee wrangler.txt"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.37",
+    "@cloudflare/ai": "^1.2.2",
+    "@cloudflare/workers-types": "^4.20260305.0",
     "@modelcontextprotocol/sdk": "^1.13.1",
+    "agents": "^0.6.0",
+    "ai": "^6.0.105",
     "axios": "^1.10.0",
+    "hono": "^4.12.3",
     "playwright": "^1.40.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "drizzle-kit": "^0.31.9",
+    "drizzle-orm": "^0.45.1",
     "shx": "^0.3.4",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "wrangler": "^4.69.0"
   },
   "keywords": [
     "jules",

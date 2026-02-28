@@ -2,6 +2,18 @@
 
 A Model Context Protocol (MCP) server for automating Google Jules - the AI coding assistant. This MCP enables seamless integration with Jules for task creation, code review automation, repository management, and AI-powered development workflows.
 
+## 🚀 NEW: Cloudflare Workers Deployment
+
+**This repository now supports deployment to Cloudflare Workers!** Get intelligent Jules monitoring with:
+- ✅ **D1 Database** for session tracking with Drizzle ORM
+- ✅ **AI Agents** that monitor Jules progress hourly via cron jobs
+- ✅ **Automatic interventions** when Jules gets stuck
+- ✅ **Prompt optimization** using Cloudflare docs and custom rules
+- ✅ **Astro frontend** with dark theme for session management
+- ✅ **Workers AI** integration via AI Gateway
+
+👉 **[See Cloudflare Deployment Guide](./CLOUDFLARE_DEPLOYMENT.md)**
+
 ## Features
 
 ### 🎯 **Task Management**

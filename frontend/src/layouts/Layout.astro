@@ -1,0 +1,32 @@
+---
+const title = 'Jules MCP - Session Manager';
+const { class: className } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="bg-background text-foreground min-h-screen">
+    <nav class="border-b border-border bg-card">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center">
+            <h1 class="text-xl font-bold">Jules MCP Manager</h1>
+          </div>
+          <div class="flex gap-4">
+            <a href="/" class="text-foreground hover:text-primary transition-colors">Sessions</a>
+            <a href="/rules" class="text-foreground hover:text-primary transition-colors">Agent Rules</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <main class={className}>
+      <slot />
+    </main>
+  </body>
+</html>

@@ -1,0 +1,176 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold">Agent Rules</h2>
+      <button
+        id="add-rule-btn"
+        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+      >
+        Add Rule
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div>
+        <h3 class="text-lg font-semibold mb-4">General Rules</h3>
+        <div id="general-rules" class="space-y-2"></div>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold mb-4">UX Rules</h3>
+        <div id="ux-rules" class="space-y-2"></div>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold mb-4">Cloudflare Rules</h3>
+        <div id="cloudflare-rules" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Rule Modal -->
+  <div id="add-rule-modal" class="hidden fixed inset-0 bg-background/80 backdrop-blur-sm z-50">
+    <div class="fixed inset-0 flex items-center justify-center p-4">
+      <div class="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+        <h3 class="text-lg font-semibold mb-4">Add New Rule</h3>
+        <form id="add-rule-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-2">Rule Type</label>
+            <select name="ruleType" class="w-full px-3 py-2 bg-background border border-border rounded-md">
+              <option value="general">General</option>
+              <option value="ux">UX</option>
+              <option value="cloudflare">Cloudflare</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Rule Name</label>
+            <input
+              type="text"
+              name="ruleName"
+              required
+              class="w-full px-3 py-2 bg-background border border-border rounded-md"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">Rule Content</label>
+            <textarea
+              name="ruleContent"
+              required
+              rows="4"
+              class="w-full px-3 py-2 bg-background border border-border rounded-md"
+            ></textarea>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button
+              type="button"
+              id="cancel-btn"
+              class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              Add Rule
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  const API_BASE = '/api';
+
+  interface Rule {
+    id: number;
+    ruleType: string;
+    ruleName: string;
+    ruleContent: string;
+    isActive: boolean;
+  }
+
+  async function fetchRules() {
+    try {
+      const response = await fetch(`${API_BASE}/rules`);
+      const data = await response.json();
+      renderRules(data.rules);
+    } catch (error) {
+      console.error('Error fetching rules:', error);
+    }
+  }
+
+  function renderRules(rules: Rule[]) {
+    const containers: Record<string, HTMLElement | null> = {
+      general: document.getElementById('general-rules'),
+      ux: document.getElementById('ux-rules'),
+      cloudflare: document.getElementById('cloudflare-rules')
+    };
+
+    // Clear containers
+    Object.values(containers).forEach(container => {
+      if (container) container.innerHTML = '';
+    });
+
+    // Render rules
+    rules.forEach(rule => {
+      const container = containers[rule.ruleType];
+      if (!container) return;
+
+      const ruleEl = document.createElement('div');
+      ruleEl.className = 'bg-background border border-border rounded-md p-3';
+      ruleEl.innerHTML = `
+        <h4 class="font-medium text-sm mb-1">${rule.ruleName}</h4>
+        <p class="text-xs text-muted-foreground line-clamp-2">${rule.ruleContent}</p>
+      `;
+      container.appendChild(ruleEl);
+    });
+  }
+
+  // Modal handling
+  const modal = document.getElementById('add-rule-modal');
+  const addBtn = document.getElementById('add-rule-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const form = document.getElementById('add-rule-form') as HTMLFormElement;
+
+  addBtn?.addEventListener('click', () => {
+    modal?.classList.remove('hidden');
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    modal?.classList.add('hidden');
+    form?.reset();
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(form);
+
+    try {
+      const response = await fetch(`${API_BASE}/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ruleType: formData.get('ruleType'),
+          ruleName: formData.get('ruleName'),
+          ruleContent: formData.get('ruleContent')
+        })
+      });
+
+      if (response.ok) {
+        modal?.classList.add('hidden');
+        form?.reset();
+        fetchRules();
+      }
+    } catch (error) {
+      console.error('Error adding rule:', error);
+    }
+  });
+
+  // Initial load
+  fetchRules();
+</script>
