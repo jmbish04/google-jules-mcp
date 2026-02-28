@@ -127,5 +127,5 @@ ${rulesContext}`;
 };
 
 // Import schema for type checking
-import * as schema from '@/db/schema';
+import * as schema from '../db/schema';
 import { eq, and } from 'drizzle-orm';

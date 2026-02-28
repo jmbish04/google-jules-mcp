@@ -1,6 +1,6 @@
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import * as schema from '@/db/schema';
+import * as schema from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 // Env is a global type from worker-configuration.d.ts

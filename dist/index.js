@@ -8,9 +8,12 @@ import * as path from 'path';
 import * as os from 'os';
 import axios from 'axios';
 class GoogleJulesMCP {
+    server;
+    browser = null;
+    page = null;
+    config;
+    dataPath;
     constructor() {
-        this.browser = null;
-        this.page = null;
         this.config = {
             headless: process.env.HEADLESS !== 'false',
             timeout: parseInt(process.env.TIMEOUT || '30000'),
