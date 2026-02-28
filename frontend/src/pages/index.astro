@@ -1,0 +1,107 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold">Jules Sessions</h2>
+      <button
+        id="refresh-btn"
+        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+      >
+        Refresh
+      </button>
+    </div>
+
+    <div id="sessions-container" class="space-y-4">
+      <div class="text-center py-8 text-muted-foreground">
+        Loading sessions...
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  const API_BASE = '/api';
+
+  interface Session {
+    id: string;
+    taskId: string;
+    repository: string;
+    branch: string;
+    status: string;
+    originalPrompt: string;
+    createdAt: number;
+    updatedAt: number;
+    lastCheckedAt?: number;
+  }
+
+  async function fetchSessions() {
+    try {
+      const response = await fetch(`${API_BASE}/sessions`);
+      const data = await response.json();
+      renderSessions(data.sessions);
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      const container = document.getElementById('sessions-container');
+      if (container) {
+        container.innerHTML = '<div class="text-center py-8 text-destructive">Error loading sessions</div>';
+      }
+    }
+  }
+
+  function renderSessions(sessions: Session[]) {
+    const container = document.getElementById('sessions-container');
+    if (!container) return;
+
+    if (sessions.length === 0) {
+      container.innerHTML = '<div class="text-center py-8 text-muted-foreground">No sessions found</div>';
+      return;
+    }
+
+    container.innerHTML = sessions.map(session => `
+      <div class="bg-card border border-border rounded-lg p-6 hover:border-accent transition-colors">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-lg font-semibold mb-1">${session.repository}</h3>
+            <p class="text-sm text-muted-foreground">Branch: ${session.branch}</p>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(session.status)}">
+            ${session.status}
+          </span>
+        </div>
+        <p class="text-sm mb-4 line-clamp-2">${session.originalPrompt}</p>
+        <div class="flex justify-between items-center text-xs text-muted-foreground">
+          <span>Created: ${new Date(session.createdAt * 1000).toLocaleString()}</span>
+          <a
+            href="/session/${session.id}"
+            class="text-primary hover:underline"
+          >
+            View Details →
+          </a>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function getStatusClass(status: string): string {
+    const classes: Record<string, string> = {
+      'active': 'bg-blue-500/10 text-blue-500',
+      'stuck_needs_human_review': 'bg-yellow-500/10 text-yellow-500',
+      'pr_submitted': 'bg-green-500/10 text-green-500',
+      'completed': 'bg-green-500/10 text-green-500',
+      'failed': 'bg-red-500/10 text-red-500'
+    };
+    return classes[status] || 'bg-muted text-muted-foreground';
+  }
+
+  // Event listeners
+  document.getElementById('refresh-btn')?.addEventListener('click', fetchSessions);
+
+  // Initial load
+  fetchSessions();
+
+  // Auto-refresh every 30 seconds
+  setInterval(fetchSessions, 30000);
+</script>
