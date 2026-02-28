@@ -29,8 +29,10 @@ export const julesMonitorAgent = {
       .limit(5);
 
     // Get secrets from secrets store
-    const openaiApiKey = await env.OPENAI_API_KEY.get();
-    const cloudflareAccountId = await env.CLOUDFLARE_ACCOUNT_ID.get();
+    const [openaiApiKey, cloudflareAccountId] = await Promise.all([
+      env.OPENAI_API_KEY.get(),
+      env.CLOUDFLARE_ACCOUNT_ID.get(),
+    ]);
 
     // Create AI client via AI Gateway
     const openai = createOpenAI({
