@@ -1,18 +1,10 @@
 import { createMcpHandler } from 'agents/mcp';
 import { drizzle } from 'drizzle-orm/d1';
-import * as schema from './db/schema';
-import { julesMonitorAgent } from './agents/monitor';
-import { promptOptimizer } from './agents/optimizer';
+import * as schema from '@/db/schema';
+import { julesMonitorAgent } from '@/agents/monitor';
+import { promptOptimizer } from '@/agents/optimizer';
 
-export interface Env {
-  DB: D1Database;
-  AI: any;
-  ASSETS: Fetcher;
-  STITCH_API_KEY: string;
-  OPENAI_API_KEY: string;
-  AI_GATEWAY_ACCOUNT_ID: string;
-  AI_GATEWAY_NAME: string;
-}
+// Env interface is now generated in worker-configuration.d.ts as a global type
 
 // MCP Handler for Jules
 const mcpHandler = createMcpHandler({

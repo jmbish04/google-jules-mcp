@@ -1,8 +1,9 @@
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import type { Env } from '../worker';
-import * as schema from '../db/schema';
+import * as schema from '@/db/schema';
 import { eq } from 'drizzle-orm';
+
+// Env is a global type from worker-configuration.d.ts
 
 /**
  * Jules Monitor Agent
@@ -27,10 +28,16 @@ export const julesMonitorAgent = {
       .orderBy(schema.agentCheckIns.createdAt)
       .limit(5);
 
+    // Get secrets from secrets store
+    const [openaiApiKey, cloudflareAccountId] = await Promise.all([
+      env.OPENAI_API_KEY.get(),
+      env.CLOUDFLARE_ACCOUNT_ID.get(),
+    ]);
+
     // Create AI client via AI Gateway
     const openai = createOpenAI({
-      apiKey: env.OPENAI_API_KEY,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${env.AI_GATEWAY_ACCOUNT_ID}/${env.AI_GATEWAY_NAME}/openai`,
+      apiKey: openaiApiKey,
+      baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
     });
 
     // Construct context for the agent
