@@ -1,245 +1,11 @@
-import { createMcpHandler } from 'agents/mcp';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { drizzle } from 'drizzle-orm/d1';
-import * as schema from '@/db/schema';
-import { julesMonitorAgent } from '@/agents/monitor';
-import { promptOptimizer } from '@/agents/optimizer';
-
-// Env interface is now generated in worker-configuration.d.ts as a global type
-
-// MCP Handler for Jules
-const mcpHandler = createMcpHandler({
-  name: 'jules-mcp-cloudflare',
-  version: '1.0.0',
-
-  tools: {
-    // Create a new Jules task with session tracking
-    jules_create_task: {
-      description: 'Create a new Jules task with repository and description. Session is tracked in D1.',
-      parameters: {
-        type: 'object',
-        properties: {
-          description: {
-            type: 'string',
-            description: 'Task description or prompt for Jules'
-          },
-          repository: {
-            type: 'string',
-            description: 'Repository in format owner/repo'
-          },
-          branch: {
-            type: 'string',
-            description: 'Branch name (optional)',
-            default: 'main'
-          },
-          optimize: {
-            type: 'boolean',
-            description: 'Whether to optimize the prompt with Cloudflare docs context',
-            default: true
-          }
-        },
-        required: ['description', 'repository']
-      },
-      handler: async (params: any, { db, env }: any) => {
-        let finalPrompt = params.description;
-
-        // Optimize prompt if requested
-        if (params.optimize) {
-          finalPrompt = await promptOptimizer.optimizeForCloudflare(
-            params.description,
-            env
-          );
-        }
-
-        // Create session in D1
-        const sessionId = crypto.randomUUID();
-        await db.insert(schema.julesSessions).values({
-          id: sessionId,
-          taskId: '', // Will be filled after Jules creates task
-          repository: params.repository,
-          branch: params.branch || 'main',
-          status: 'active',
-          originalPrompt: params.description,
-        });
-
-        // Log the prompt
-        await db.insert(schema.prompts).values({
-          sessionId,
-          prompt: params.description,
-          optimizedPrompt: finalPrompt,
-          promptType: 'initial',
-        });
-
-        return {
-          sessionId,
-          originalPrompt: params.description,
-          optimizedPrompt: finalPrompt,
-          message: 'Session created. Jules task will be initiated with optimized prompt.'
-        };
-      }
-    },
-
-    // Send message to Jules with tracking
-    jules_send_message: {
-      description: 'Send a message or instruction to Jules in an active task',
-      parameters: {
-        type: 'object',
-        properties: {
-          sessionId: {
-            type: 'string',
-            description: 'Session ID from jules_create_task'
-          },
-          message: {
-            type: 'string',
-            description: 'Message to send to Jules'
-          },
-          optimize: {
-            type: 'boolean',
-            description: 'Whether to optimize the message',
-            default: true
-          }
-        },
-        required: ['sessionId', 'message']
-      },
-      handler: async (params: any, { db, env }: any) => {
-        let finalMessage = params.message;
-
-        if (params.optimize) {
-          finalMessage = await promptOptimizer.optimizeForCloudflare(
-            params.message,
-            env
-          );
-        }
-
-        // Log the prompt
-        await db.insert(schema.prompts).values({
-          sessionId: params.sessionId,
-          prompt: params.message,
-          optimizedPrompt: finalMessage,
-          promptType: 'follow_up',
-        });
-
-        return {
-          originalMessage: params.message,
-          optimizedMessage: finalMessage,
-          message: 'Message will be sent to Jules'
-        };
-      }
-    },
-
-    // Request UX mockup via Stitch
-    jules_request_ux_mockup: {
-      description: 'Request a UX mockup from Stitch for Jules to implement',
-      parameters: {
-        type: 'object',
-        properties: {
-          sessionId: {
-            type: 'string',
-            description: 'Session ID for this Jules task'
-          },
-          uxDescription: {
-            type: 'string',
-            description: 'Description of the UX/UI to mockup'
-          }
-        },
-        required: ['sessionId', 'uxDescription']
-      },
-      handler: async (params: any, { db, env }: any) => {
-        // Optimize for Stitch with shadcn dark theme standards
-        const optimizedPrompt = await promptOptimizer.optimizeForStitch(
-          params.uxDescription,
-          env
-        );
-
-        // TODO: Actually call Stitch MCP here
-        const stitchSessionId = `stitch-${crypto.randomUUID()}`;
-
-        // Log UX mockup request
-        await db.insert(schema.uxMockups).values({
-          sessionId: params.sessionId,
-          stitchSessionId,
-          mockupPrompt: params.uxDescription,
-          optimizedPrompt,
-        });
-
-        return {
-          stitchSessionId,
-          optimizedPrompt,
-          message: 'Stitch mockup requested. Session ID can be provided to Jules.'
-        };
-      }
-    },
-
-    // List active sessions
-    jules_list_sessions: {
-      description: 'List all Jules sessions with their current status',
-      parameters: {
-        type: 'object',
-        properties: {
-          status: {
-            type: 'string',
-            description: 'Filter by status',
-            enum: ['active', 'stuck_needs_human_review', 'pr_submitted', 'completed', 'failed']
-          }
-        }
-      },
-      handler: async (params: any, { db }: any) => {
-        let query = db.select().from(schema.julesSessions);
-
-        if (params.status) {
-          query = query.where(eq(schema.julesSessions.status, params.status));
-        }
-
-        const sessions = await query.limit(50);
-
-        return {
-          sessions,
-          count: sessions.length
-        };
-      }
-    },
-
-    // Get session details
-    jules_get_session: {
-      description: 'Get detailed information about a Jules session',
-      parameters: {
-        type: 'object',
-        properties: {
-          sessionId: {
-            type: 'string',
-            description: 'Session ID'
-          }
-        },
-        required: ['sessionId']
-      },
-      handler: async (params: any, { db }: any) => {
-        const session = await db.select()
-          .from(schema.julesSessions)
-          .where(eq(schema.julesSessions.id, params.sessionId))
-          .limit(1);
-
-        if (session.length === 0) {
-          throw new Error('Session not found');
-        }
-
-        // Get related data
-        const promptsData = await db.select()
-          .from(schema.prompts)
-          .where(eq(schema.prompts.sessionId, params.sessionId));
-
-        const checkIns = await db.select()
-          .from(schema.agentCheckIns)
-          .where(eq(schema.agentCheckIns.sessionId, params.sessionId))
-          .orderBy(desc(schema.agentCheckIns.createdAt));
-
-        return {
-          session: session[0],
-          prompts: promptsData,
-          checkIns
-        };
-      }
-    }
-  }
-});
+import { z } from 'zod/v3';
+import * as schema from './db/schema';
+import { julesMonitorAgent } from './agents/monitor';
+import { promptOptimizer } from './agents/optimizer';
+import { eq, desc } from 'drizzle-orm';
+import { createMcpHandler } from './mcp/handler';
 
 // Main worker export
 export default {
@@ -250,7 +16,215 @@ export default {
 
     // MCP endpoint
     if (url.pathname === '/mcp') {
-      return mcpHandler(request, { db, env });
+      const server = new McpServer({
+        name: 'jules-mcp-cloudflare',
+        version: '1.0.0',
+      });
+
+      // Create a new Jules task with session tracking
+      server.tool(
+        'jules_create_task',
+        'Create a new Jules task with repository and description. Session is tracked in D1.',
+        {
+          description: z.string().describe('Task description or prompt for Jules'),
+          repository: z.string().describe('Repository in format owner/repo'),
+          branch: z.string().default('main').describe('Branch name (optional)'),
+          optimize: z.boolean().default(true).describe('Whether to optimize the prompt with Cloudflare docs context')
+        },
+        async (params) => {
+          let finalPrompt = params.description;
+
+          // Optimize prompt if requested
+          if (params.optimize) {
+            finalPrompt = await promptOptimizer.optimizeForCloudflare(params.description, env);
+          }
+
+          // Create session in D1
+          const sessionId = crypto.randomUUID();
+          await db.insert(schema.julesSessions).values({
+            id: sessionId,
+            taskId: '', // Will be filled after Jules creates task
+            repository: params.repository,
+            branch: params.branch,
+            status: 'active',
+            originalPrompt: params.description,
+          });
+
+          // Log the prompt
+          await db.insert(schema.prompts).values({
+            sessionId,
+            prompt: params.description,
+            optimizedPrompt: finalPrompt,
+            promptType: 'initial',
+          });
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                sessionId,
+                originalPrompt: params.description,
+                optimizedPrompt: finalPrompt,
+                message: 'Session created. Jules task will be initiated with optimized prompt.'
+              }, null, 2)
+            }]
+          };
+        }
+      );
+
+      // Send message to Jules with tracking
+      server.tool(
+        'jules_send_message',
+        'Send a message or instruction to Jules in an active task',
+        {
+          sessionId: z.string().describe('Session ID from jules_create_task'),
+          message: z.string().describe('Message to send to Jules'),
+          optimize: z.boolean().default(true).describe('Whether to optimize the message')
+        },
+        async (params) => {
+          let finalMessage = params.message;
+
+          if (params.optimize) {
+            finalMessage = await promptOptimizer.optimizeForCloudflare(params.message, env);
+          }
+
+          // Log the prompt
+          await db.insert(schema.prompts).values({
+            sessionId: params.sessionId,
+            prompt: params.message,
+            optimizedPrompt: finalMessage,
+            promptType: 'follow_up',
+          });
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                originalMessage: params.message,
+                optimizedMessage: finalMessage,
+                message: 'Message will be sent to Jules'
+              }, null, 2)
+            }]
+          };
+        }
+      );
+
+      // Request UX mockup via Stitch
+      server.tool(
+        'jules_request_ux_mockup',
+        'Request a UX mockup from Stitch for Jules to implement',
+        {
+          sessionId: z.string().describe('Session ID for this Jules task'),
+          uxDescription: z.string().describe('Description of the UX/UI to mockup')
+        },
+        async (params) => {
+          const optimizedPrompt = await promptOptimizer.optimizeForStitch(params.uxDescription, env);
+          const stitchSessionId = `stitch-${crypto.randomUUID()}`;
+
+          // Log UX mockup request
+          await db.insert(schema.uxMockups).values({
+            sessionId: params.sessionId,
+            stitchSessionId,
+            mockupPrompt: params.uxDescription,
+            optimizedPrompt,
+          });
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                stitchSessionId,
+                optimizedPrompt,
+                message: 'Stitch mockup requested. Session ID can be provided to Jules.'
+              }, null, 2)
+            }]
+          };
+        }
+      );
+
+      // List active sessions
+      server.tool(
+        'jules_list_sessions',
+        'List all Jules sessions with their current status',
+        {
+          status: z.enum(['active', 'stuck_needs_human_review', 'pr_submitted', 'completed', 'failed'])
+            .optional()
+            .describe('Filter by status')
+        },
+        async (params) => {
+          const baseQuery = db.select().from(schema.julesSessions);
+
+          if (params.status) {
+            const sessions = await baseQuery.where(eq(schema.julesSessions.status, params.status)).limit(50);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({
+                  sessions,
+                  count: sessions.length
+                }, null, 2)
+              }]
+            };
+          }
+
+          const sessions = await baseQuery.limit(50);
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                sessions,
+                count: sessions.length
+              }, null, 2)
+            }]
+          };
+        }
+      );
+
+      // Get session details
+      server.tool(
+        'jules_get_session',
+        'Get detailed information about a Jules session',
+        {
+          sessionId: z.string().describe('Session ID')
+        },
+        async (params) => {
+          const session = await db.select()
+            .from(schema.julesSessions)
+            .where(eq(schema.julesSessions.id, params.sessionId))
+            .limit(1);
+
+          if (session.length === 0) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: 'Session not found' }) }],
+              isError: true
+            };
+          }
+
+          const promptsData = await db.select()
+            .from(schema.prompts)
+            .where(eq(schema.prompts.sessionId, params.sessionId));
+
+          const checkIns = await db.select()
+            .from(schema.agentCheckIns)
+            .where(eq(schema.agentCheckIns.sessionId, params.sessionId))
+            .orderBy(desc(schema.agentCheckIns.createdAt));
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                session: session[0],
+                prompts: promptsData,
+                checkIns
+              }, null, 2)
+            }]
+          };
+        }
+      );
+
+      const mcpHandler = createMcpHandler(server);
+      return mcpHandler(request, env, ctx); // Passed standard Worker Fetch args
     }
 
     // Frontend assets
@@ -325,6 +299,10 @@ async function handleApiRequest(request: Request, env: Env, db: any): Promise<Re
     if (url.pathname.match(/^\/api\/sessions\/[^\/]+$/) && request.method === 'GET') {
       const sessionId = url.pathname.split('/').pop();
 
+      if (!sessionId) {
+        return Response.json({ error: 'Invalid session ID' }, { status: 400, headers: corsHeaders });
+      }
+
       const session = await db.select()
         .from(schema.julesSessions)
         .where(eq(schema.julesSessions.id, sessionId))
@@ -361,7 +339,7 @@ async function handleApiRequest(request: Request, env: Env, db: any): Promise<Re
 
     // POST /api/rules - create agent rule
     if (url.pathname === '/api/rules' && request.method === 'POST') {
-      const body = await request.json();
+      const body = await request.json() as any;
 
       const result = await db.insert(schema.agentRules).values({
         ruleType: body.ruleType,
@@ -379,6 +357,3 @@ async function handleApiRequest(request: Request, env: Env, db: any): Promise<Re
     return Response.json({ error: 'Internal server error' }, { status: 500, headers: corsHeaders });
   }
 }
-
-// Import eq and desc from drizzle-orm
-import { eq, desc } from 'drizzle-orm';
