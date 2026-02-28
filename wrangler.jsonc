@@ -1,0 +1,106 @@
+{
+  "name": "jules-mcp-worker",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-02-28",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "upload_source_maps": true,
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false
+    }
+  },  
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jules-mcp-worker",
+      "database_id": "5494c98d-34c8-4e56-8ce7-fcab51850279",
+      "migrations_dir": "./drizzle"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *" // Every hour
+    ]
+  },
+  "assets": {
+    "directory": "frontend/dist",
+    "binding": "ASSETS"
+  },
+	"secrets_store_secrets": [
+		{
+			"binding": "GITHUB_TOKEN",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "GITHUB_TOKEN"
+		},
+		{
+			"binding": "CLOUDFLARE_API_TOKEN",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "CLOUDFLARE_API_TOKEN"
+		},
+		{
+			"binding": "OPENAI_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "OPENAI_API_KEY"
+		},
+		{
+			"binding": "CLOUDFLARE_ACCOUNT_ID",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "CLOUDFLARE_ACCOUNT_ID"
+		},
+		{
+			"binding": "CLOUDFLARE_SECRETS_STORE_TOKEN",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "CLOUDFLARE_SECRETS_STORE_TOKEN"
+		},
+		{
+			"binding": "WORKER_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "WORKER_API_KEY"
+		},
+		{
+			"binding": "AI_GATEWAY_TOKEN",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "CLOUDFLARE_AI_GATEWAY_TOKEN"
+		},
+		{
+			"binding": "CF_BROWSER_RENDER_TOKEN",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "CLOUDFLARE_BROWSER_RENDER_TOKEN"
+		},
+		{
+			"binding": "JULES_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "JULES_API_KEY"
+		},
+		{
+			"binding": "GEMINI_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "GOOGLE_API_KEY"
+		},
+		{
+			"binding": "ANTHROPIC_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "ANTHROPIC_API_KEY"
+		},
+		{
+			"binding": "STITCH_API_KEY",
+			"store_id": "8c42fa70938644e0a8a109744467375f",
+			"secret_name": "STITCH_API_KEY"
+		}    
+	],
+  "vars": {
+    "AI_GATEWAY_NAME": "jules-mcp"
+  }
+}
+
+
+
