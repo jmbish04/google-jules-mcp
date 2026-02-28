@@ -4,6 +4,21 @@ import { createOpenAI } from '@ai-sdk/openai';
 // Env is a global type from worker-configuration.d.ts
 
 /**
+ * Helper function to create OpenAI client with secrets from Secrets Store
+ */
+async function _createOpenAIClient(env: Env) {
+  const [openaiApiKey, cloudflareAccountId] = await Promise.all([
+    env.OPENAI_API_KEY.get(),
+    env.CLOUDFLARE_ACCOUNT_ID.get(),
+  ]);
+
+  return createOpenAI({
+    apiKey: openaiApiKey,
+    baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
+  });
+}
+
+/**
  * Prompt Optimizer
  * Optimizes prompts for Jules using Cloudflare documentation context
  * and applies agent rules for standardization
@@ -13,14 +28,7 @@ export const promptOptimizer = {
    * Optimize a prompt for Cloudflare-specific implementation
    */
   async optimizeForCloudflare(prompt: string, env: Env): Promise<string> {
-    // Get secrets from secrets store
-    const openaiApiKey = await env.OPENAI_API_KEY.get();
-    const cloudflareAccountId = await env.CLOUDFLARE_ACCOUNT_ID.get();
-
-    const openai = createOpenAI({
-      apiKey: openaiApiKey,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
-    });
+    const openai = await _createOpenAIClient(env);
 
     // TODO: Query cloudflare-docs MCP for relevant context
     // For now, use general optimization
@@ -58,14 +66,7 @@ Respond with ONLY the optimized prompt, no explanations.
    * Optimize a UX prompt for Stitch with shadcn dark theme standards
    */
   async optimizeForStitch(uxDescription: string, env: Env): Promise<string> {
-    // Get secrets from secrets store
-    const openaiApiKey = await env.OPENAI_API_KEY.get();
-    const cloudflareAccountId = await env.CLOUDFLARE_ACCOUNT_ID.get();
-
-    const openai = createOpenAI({
-      apiKey: openaiApiKey,
-      baseURL: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${env.AI_GATEWAY_NAME}/openai`,
-    });
+    const openai = await _createOpenAIClient(env);
 
     const optimizationPrompt = `
 You are optimizing a UX mockup request for Stitch (Google's UI prototyping tool).
